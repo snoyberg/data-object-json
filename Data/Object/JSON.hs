@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 ---------------------------------------------------------
 --
 -- Module        : Data.Object.JSON
@@ -19,22 +20,25 @@ module Data.Object.JSON
       JsonScalar (..)
     , JsonObject
       -- * Serialization
+    , JsonDecodeError (..)
     , decode
     , encode
       -- * Specialization
     , toJsonObject
     , fromJsonObject
-    , lookupJsonObject
     ) where
 
 import Data.Object
 import Data.Object.Raw
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
-import Data.Maybe (fromJust)
 import qualified Data.Trie
 import Control.Arrow
 import Control.Applicative ((<$>))
+import Data.Generics
+import Control.Monad.Attempt.Class
+import Control.Exception
+import Data.Attempt
 
 import Text.JSONb.Simple as J
 import qualified Text.JSONb.Decode as Decode
@@ -81,40 +85,42 @@ instance FromObject JSON BS.ByteString JsonScalar where
         J.Object . Data.Trie.fromList <$> mapM
         (runKleisli $ second $ Kleisli fromObject) m
 
+-- | Error type for JSON decoding errors.
+newtype JsonDecodeError = JsonDecodeError String
+    deriving (Show, Typeable)
+instance Exception JsonDecodeError
+
 -- | Decode a lazy bytestring into any value that can be converted from a
 -- 'JsonObject'. Be aware that both parsing and conversion errors will be
--- reflected in the 'MonadFail' wrapper; if you wish to receive those errors
+-- reflected in the 'MonadAttempt' wrapper; if you wish to receive those errors
 -- separate, first use this function to decode to a 'JsonObject' and then
 -- 'fromJsonObject' to perform the conversion.
-decode :: (FromObject v BS.ByteString JsonScalar, MonadFail m)
+decode :: (FromObject v BS.ByteString JsonScalar, MonadAttempt m)
        => BL.ByteString
        -> m v
-decode = either (fail . fst) (fromJsonObject . toJsonObject) . Decode.decode
+decode = either (failure . JsonDecodeError . fst)
+                (fromJsonObject . toJsonObject)
+       . Decode.decode
 
 -- | Encode any value which can be converted to a 'JsonObject' into a lazy
 -- bytestring.
 encode :: ToObject v BS.ByteString JsonScalar
        => v
        -> BL.ByteString
-encode = Encode.encode Encode.Compact . fromJust . fromJsonObject . toJsonObject
+encode = Encode.encode Encode.Compact
+       . fromSuccess
+       . fromJsonObject
+       . toJsonObject
+       where
+           fromSuccess (Success s) = s
+           fromSuccess (Failure e) = throw e
 
 -- | 'toObject' specialized for 'JsonObject's
 toJsonObject :: ToObject a BS.ByteString JsonScalar => a -> JsonObject
 toJsonObject = toObject
 
 -- | 'fomObject' specialized for 'JsonObject's
-fromJsonObject :: (MonadFail m, FromObject a BS.ByteString JsonScalar)
+fromJsonObject :: (MonadAttempt m, FromObject a BS.ByteString JsonScalar)
                => JsonObject
                -> m a
 fromJsonObject = fromObject
-
--- | 'lookupObject' specialized for 'JsonObject's
-lookupJsonObject :: ( MonadFail m
-                   , ToScalar k BS.ByteString
-                   , Show k
-                   , FromObject v BS.ByteString JsonScalar
-                   )
-                => k
-                -> [(BS.ByteString, JsonObject)]
-                -> m v
-lookupJsonObject = lookupObject
