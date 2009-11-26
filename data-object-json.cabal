@@ -16,8 +16,9 @@ library
                      json-b >= 0.0.4,
                      bytestring-trie >= 0.1.4,
                      bytestring >= 0.9.1.4,
-                     data-object >= 0.2.0,
-                     attempt,
-                     syb
+                     data-object >= 0.2.0 && < 0.3.0,
+                     attempt >= 0.0.2 && < 0.1.0,
+                     syb,
+                     convertible >= 1.2.0 && < 1.3.0
     exposed-modules: Data.Object.JSON
     ghc-options:     -Wall

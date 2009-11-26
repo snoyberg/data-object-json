@@ -29,16 +29,16 @@ module Data.Object.JSON
     ) where
 
 import Data.Object
-import Data.Object.Raw
+import Data.Object.Text
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Trie
 import Control.Arrow
 import Control.Applicative ((<$>))
 import Data.Generics
-import Control.Monad.Attempt.Class
 import Control.Exception
 import Data.Attempt
+import Data.Convertible
 
 import Text.JSONb.Simple as J
 import qualified Text.JSONb.Decode as Decode
@@ -52,17 +52,17 @@ data JsonScalar =
     | JsonBoolean Bool
     | JsonNull
 
-instance ToScalar JsonScalar Raw where
-    toScalar (JsonString b) = toScalar b
-    toScalar (JsonNumber r) = toScalar r
-    toScalar (JsonBoolean b) = toScalar b
-    toScalar JsonNull = toScalar ""
-instance ToScalar Raw JsonScalar where
-    toScalar = JsonString . toScalar
-instance FromScalar JsonScalar Raw where
-    fromScalar = return . toScalar
-instance FromScalar Raw JsonScalar where
-    fromScalar = return . toScalar
+instance ConvertSuccess JsonScalar Text where
+    convertSuccess (JsonString b) = convertSuccess b
+    convertSuccess (JsonNumber r) = convertSuccess r
+    convertSuccess (JsonBoolean b) = convertSuccess b
+    convertSuccess JsonNull = convertSuccess ""
+instance ConvertSuccess Text JsonScalar where
+    convertSuccess = JsonString . convertSuccess
+instance ConvertAttempt JsonScalar Text where
+    convertAttempt = return . convertSuccess
+instance ConvertAttempt Text JsonScalar where
+    convertAttempt = return . convertSuccess
 
 -- | Meant to match closely with the 'JSON' data type. Therefore, uses strict
 -- byte strings for keys and the 'JsonScalar' type for scalars.
@@ -95,9 +95,9 @@ instance Exception JsonDecodeError
 -- reflected in the 'MonadAttempt' wrapper; if you wish to receive those errors
 -- separate, first use this function to decode to a 'JsonObject' and then
 -- 'fromJsonObject' to perform the conversion.
-decode :: (FromObject v BS.ByteString JsonScalar, MonadAttempt m)
+decode :: (FromObject v BS.ByteString JsonScalar)
        => BL.ByteString
-       -> m v
+       -> Attempt v
 decode = either (failure . JsonDecodeError . fst)
                 (fromJsonObject . toJsonObject)
        . Decode.decode
@@ -111,16 +111,13 @@ encode = Encode.encode Encode.Compact
        . fromSuccess
        . fromJsonObject
        . toJsonObject
-       where
-           fromSuccess (Success s) = s
-           fromSuccess (Failure e) = throw e
 
 -- | 'toObject' specialized for 'JsonObject's
 toJsonObject :: ToObject a BS.ByteString JsonScalar => a -> JsonObject
 toJsonObject = toObject
 
 -- | 'fomObject' specialized for 'JsonObject's
-fromJsonObject :: (MonadAttempt m, FromObject a BS.ByteString JsonScalar)
+fromJsonObject :: FromObject a BS.ByteString JsonScalar
                => JsonObject
-               -> m a
+               -> Attempt a
 fromJsonObject = fromObject
