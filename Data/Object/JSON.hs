@@ -28,7 +28,6 @@ module Data.Object.JSON
     , fromJsonObject
     ) where
 
-import Data.Object
 import Data.Object.Text
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
@@ -38,7 +37,7 @@ import Control.Applicative ((<$>))
 import Data.Generics
 import Control.Exception
 import Data.Attempt
-import Data.Convertible
+import Data.Convertible.Text
 
 import Text.JSONb.Simple as J
 import qualified Text.JSONb.Decode as Decode
