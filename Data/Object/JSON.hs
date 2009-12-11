@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 ---------------------------------------------------------
 --
 -- Module        : Data.Object.JSON
@@ -17,7 +18,8 @@
 -- 'Object's.
 module Data.Object.JSON
     ( -- * Types
-      JsonScalar (..)
+      Json (..)
+    , JsonScalar (..)
     , JsonObject
       -- * Serialization
     , JsonDecodeError (..)
@@ -42,6 +44,10 @@ import Data.Convertible.Text
 import Text.JSONb.Simple as J
 import qualified Text.JSONb.Decode as Decode
 import qualified Text.JSONb.Encode as Encode
+
+-- | A fully formed JSON document.
+newtype Json = Json { unJson :: BL.ByteString }
+    deriving (Show, Eq)
 
 -- | Matches the scalar data types used in json-b so we can have proper mapping
 -- between the two libraries.
@@ -120,3 +126,8 @@ fromJsonObject :: FromObject a BS.ByteString JsonScalar
                => JsonObject
                -> Attempt a
 fromJsonObject = fromObject
+
+instance ConvertSuccess JsonObject Json where
+    convertSuccess = Json . encode
+instance ConvertAttempt Json JsonObject where
+    convertAttempt = decode . unJson
