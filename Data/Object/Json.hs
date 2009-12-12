@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 ---------------------------------------------------------
 --
--- Module        : Data.Object.JSON
+-- Module        : Data.Object.Json
 -- Copyright     : Michael Snoyman
 -- License       : BSD3
 --
@@ -16,9 +16,9 @@
 
 -- | A simple wrapper around the json-b library which presents values inside
 -- 'Object's.
-module Data.Object.JSON
+module Data.Object.Json
     ( -- * Types
-      Json (..)
+      JsonDoc (..)
     , JsonScalar (..)
     , JsonObject
       -- * Serialization
@@ -46,7 +46,7 @@ import qualified Text.JSONb.Decode as Decode
 import qualified Text.JSONb.Encode as Encode
 
 -- | A fully formed JSON document.
-newtype Json = Json { unJson :: BL.ByteString }
+newtype JsonDoc = JsonDoc { unJsonDoc :: BL.ByteString }
     deriving (Show, Eq)
 
 -- | Matches the scalar data types used in json-b so we can have proper mapping
@@ -121,13 +121,13 @@ encode = Encode.encode Encode.Compact
 toJsonObject :: ToObject a BS.ByteString JsonScalar => a -> JsonObject
 toJsonObject = toObject
 
--- | 'fomObject' specialized for 'JsonObject's
+-- | 'fromObject' specialized for 'JsonObject's
 fromJsonObject :: FromObject a BS.ByteString JsonScalar
                => JsonObject
                -> Attempt a
 fromJsonObject = fromObject
 
-instance ConvertSuccess JsonObject Json where
-    convertSuccess = Json . encode
-instance ConvertAttempt Json JsonObject where
-    convertAttempt = decode . unJson
+instance ConvertSuccess JsonObject JsonDoc where
+    convertSuccess = JsonDoc . encode
+instance ConvertAttempt JsonDoc JsonObject where
+    convertAttempt = decode . unJsonDoc

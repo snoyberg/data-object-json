@@ -20,5 +20,5 @@ library
                      attempt >= 0.2.0 && < 0.3,
                      convertible-text >= 0.0.0 && < 0.1,
                      syb
-    exposed-modules: Data.Object.JSON
+    exposed-modules: Data.Object.Json
     ghc-options:     -Wall
