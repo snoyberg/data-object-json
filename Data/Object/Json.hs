@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TemplateHaskell #-}
 ---------------------------------------------------------
 --
 -- Module        : Data.Object.Json
@@ -64,18 +65,34 @@ instance ConvertSuccess JsonScalar Text where
     convertSuccess JsonNull = convertSuccess ""
 instance ConvertSuccess Text JsonScalar where
     convertSuccess = JsonString . convertSuccess
-instance ConvertAttempt JsonScalar Text where
-    convertAttempt = return . convertSuccess
-instance ConvertAttempt Text JsonScalar where
-    convertAttempt = return . convertSuccess
+
+instance ConvertSuccess JsonScalar String where
+    convertSuccess = cs . (cs :: JsonScalar -> Text)
+instance ConvertSuccess String JsonScalar where
+    convertSuccess = JsonString . cs
+
+instance ConvertSuccess JsonScalar BS.ByteString where
+    convertSuccess = cs . (cs :: JsonScalar -> Text)
+instance ConvertSuccess BS.ByteString JsonScalar where
+    convertSuccess = JsonString . cs
+
+$(let types = [''String, ''BS.ByteString, ''Text]
+   in deriveAttempts $
+        [(k, ''JsonScalar) | k <- types] ++
+        [(''JsonScalar, v) | v <- types])
+
+$(deriveSuccessConvs ''BS.ByteString ''JsonScalar
+    [''String, ''BS.ByteString, ''Text]
+    [''String, ''BS.ByteString, ''Text, ''JsonScalar])
 
 -- | Meant to match closely with the 'JSON' data type. Therefore, uses strict
 -- byte strings for keys and the 'JsonScalar' type for scalars.
 type JsonObject = Object BS.ByteString JsonScalar
 
 instance ToObject JSON BS.ByteString JsonScalar where
-    toObject (J.Object trie) = toObject $ Data.Trie.toList trie
-    toObject (J.Array a) = toObject a
+    toObject (J.Object trie) =
+        Mapping . map (second toObject) $ Data.Trie.toList trie
+    toObject (J.Array a) = Sequence $ map toObject $ a
     toObject (J.String bs) = Scalar $ JsonString bs
     toObject (J.Number r) = Scalar $ JsonNumber r
     toObject (J.Boolean b) = Scalar $ JsonBoolean b
@@ -95,27 +112,20 @@ newtype JsonDecodeError = JsonDecodeError String
     deriving (Show, Typeable)
 instance Exception JsonDecodeError
 
--- | Decode a lazy bytestring into any value that can be converted from a
--- 'JsonObject'. Be aware that both parsing and conversion errors will be
--- reflected in the 'MonadAttempt' wrapper; if you wish to receive those errors
--- separate, first use this function to decode to a 'JsonObject' and then
--- 'fromJsonObject' to perform the conversion.
-decode :: (FromObject v BS.ByteString JsonScalar)
+-- | Decode a lazy bytestring into a 'JsonObject'.
+decode :: MonadFailure JsonDecodeError m
        => BL.ByteString
-       -> Attempt v
+       -> m JsonObject
 decode = either (failure . JsonDecodeError . fst)
-                (fromJsonObject . toJsonObject)
+                (return . toJsonObject)
        . Decode.decode
 
--- | Encode any value which can be converted to a 'JsonObject' into a lazy
--- bytestring.
-encode :: ToObject v BS.ByteString JsonScalar
-       => v
+-- | Encode a 'JsonObject' into a lazy bytestring.
+encode :: JsonObject
        -> BL.ByteString
 encode = Encode.encode Encode.Compact
        . fromSuccess
        . fromJsonObject
-       . toJsonObject
 
 -- | 'toObject' specialized for 'JsonObject's
 toJsonObject :: ToObject a BS.ByteString JsonScalar => a -> JsonObject
