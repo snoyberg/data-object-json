@@ -22,6 +22,9 @@ module Data.Object.Json
       JsonDoc (..)
     , JsonScalar (..)
     , JsonObject
+      -- * IO
+    , readJsonDoc
+    , writeJsonDoc
       -- * Serialization
     , JsonDecodeError (..)
     , decode
@@ -49,6 +52,12 @@ import qualified Text.JSONb.Encode as Encode
 -- | A fully formed JSON document.
 newtype JsonDoc = JsonDoc { unJsonDoc :: BL.ByteString }
     deriving (Show, Eq)
+
+readJsonDoc :: FilePath -> IO JsonDoc
+readJsonDoc = fmap JsonDoc . BL.readFile
+
+writeJsonDoc :: FilePath -> JsonDoc -> IO ()
+writeJsonDoc fp = BL.writeFile fp . unJsonDoc
 
 -- | Matches the scalar data types used in json-b so we can have proper mapping
 -- between the two libraries.
@@ -89,23 +98,23 @@ $(deriveSuccessConvs ''BS.ByteString ''JsonScalar
 -- byte strings for keys and the 'JsonScalar' type for scalars.
 type JsonObject = Object BS.ByteString JsonScalar
 
-instance ToObject JSON BS.ByteString JsonScalar where
-    toObject (J.Object trie) =
-        Mapping . map (second toObject) $ Data.Trie.toList trie
-    toObject (J.Array a) = Sequence $ map toObject $ a
-    toObject (J.String bs) = Scalar $ JsonString bs
-    toObject (J.Number r) = Scalar $ JsonNumber r
-    toObject (J.Boolean b) = Scalar $ JsonBoolean b
-    toObject J.Null = Scalar JsonNull
-instance FromObject JSON BS.ByteString JsonScalar where
-    fromObject (Scalar (JsonString bs)) = return $ J.String bs
-    fromObject (Scalar (JsonNumber r)) = return $ J.Number r
-    fromObject (Scalar (JsonBoolean b)) = return $ J.Boolean b
-    fromObject (Scalar JsonNull) = return J.Null
-    fromObject (Sequence s) = J.Array <$> mapM fromObject s
-    fromObject (Mapping m) =
+instance ConvertSuccess JSON JsonObject where
+    convertSuccess (J.Object trie) =
+        Mapping . map (second cs) $ Data.Trie.toList trie
+    convertSuccess (J.Array a) = Sequence $ map cs $ a
+    convertSuccess (J.String bs) = Scalar $ JsonString bs
+    convertSuccess (J.Number r) = Scalar $ JsonNumber r
+    convertSuccess (J.Boolean b) = Scalar $ JsonBoolean b
+    convertSuccess J.Null = Scalar JsonNull
+instance ConvertAttempt JsonObject JSON where
+    convertAttempt (Scalar (JsonString bs)) = return $ J.String bs
+    convertAttempt (Scalar (JsonNumber r)) = return $ J.Number r
+    convertAttempt (Scalar (JsonBoolean b)) = return $ J.Boolean b
+    convertAttempt (Scalar JsonNull) = return J.Null
+    convertAttempt (Sequence s) = J.Array <$> mapM ca s
+    convertAttempt (Mapping m) =
         J.Object . Data.Trie.fromList <$> mapM
-        (runKleisli $ second $ Kleisli fromObject) m
+        (runKleisli $ second $ Kleisli ca) m
 
 -- | Error type for JSON decoding errors.
 newtype JsonDecodeError = JsonDecodeError String
@@ -127,15 +136,15 @@ encode = Encode.encode Encode.Compact
        . fromSuccess
        . fromJsonObject
 
--- | 'toObject' specialized for 'JsonObject's
-toJsonObject :: ToObject a BS.ByteString JsonScalar => a -> JsonObject
-toJsonObject = toObject
+-- | 'convertSuccess' specialized for 'JsonObject's
+toJsonObject :: ConvertSuccess a JsonObject => a -> JsonObject
+toJsonObject = cs
 
--- | 'fromObject' specialized for 'JsonObject's
-fromJsonObject :: FromObject a BS.ByteString JsonScalar
+-- | 'convertAttempt' specialized for 'JsonObject's
+fromJsonObject :: ConvertAttempt JsonObject a
                => JsonObject
                -> Attempt a
-fromJsonObject = fromObject
+fromJsonObject = ca
 
 instance ConvertSuccess JsonObject JsonDoc where
     convertSuccess = JsonDoc . encode
