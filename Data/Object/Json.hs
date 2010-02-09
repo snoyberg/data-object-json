@@ -43,7 +43,6 @@ import Control.Applicative ((<$>))
 import Data.Generics
 import Control.Exception
 import Data.Attempt
-import Data.Convertible.Text
 
 import Text.JSONb.Simple as J
 import qualified Text.JSONb.Decode as Decode
