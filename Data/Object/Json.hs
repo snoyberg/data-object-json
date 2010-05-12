@@ -1,9 +1,6 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE TemplateHaskell #-}
 ---------------------------------------------------------
 --
 -- Module        : Data.Object.Json
@@ -13,107 +10,114 @@
 -- Maintainer    : Michael Snoyman <michael@snoyman.com>
 -- Stability     : Stable
 -- Portability   : portable
----------------------------------------------------------
+
 
 -- | A simple wrapper around the json-b library which presents values inside
 -- 'Object's.
 module Data.Object.Json
-    ( -- * Types
-      JsonDoc (..)
-    , JsonScalar (..)
+    ( -- * Definition of 'JsonObject'
+      JsonScalar (..)
     , JsonObject
-      -- * IO
-    , readJsonDoc
-    , writeJsonDoc
-      -- * Serialization
-    , JsonDecodeError (..)
-    , decode
-    , encode
-      -- * Specialization
+      -- * Automatic scalar conversions
+    , IsJsonScalar (..)
     , toJsonObject
     , fromJsonObject
+      -- * Encoding/decoding
+    , encode
+    , encodeFile
+    , decode
+    , decodeFile
     ) where
 
-import Data.Object.Text
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BL
+import Data.Object
 import qualified Data.Trie
 import Control.Arrow
-import Control.Applicative ((<$>))
-import Data.Generics
+import Data.Data
 import Control.Exception
-import Data.Attempt
 
 import Text.JSONb.Simple as J
 import qualified Text.JSONb.Decode as Decode
 import qualified Text.JSONb.Encode as Encode
 
--- | A fully formed JSON document.
-newtype JsonDoc = JsonDoc { unJsonDoc :: BL.ByteString }
-    deriving (Show, Eq)
+import qualified Data.Text
+import qualified Data.Text.Lazy
 
-readJsonDoc :: FilePath -> IO JsonDoc
-readJsonDoc = fmap JsonDoc . BL.readFile
+import qualified Data.ByteString
+import qualified Data.ByteString.Lazy
 
-writeJsonDoc :: FilePath -> JsonDoc -> IO ()
-writeJsonDoc fp = BL.writeFile fp . unJsonDoc
+import Data.Convertible.Text (ConvertSuccess, cs)
+import Control.Failure
 
 -- | Matches the scalar data types used in json-b so we can have proper mapping
 -- between the two libraries.
 data JsonScalar =
-    JsonString BS.ByteString
+    JsonString Data.ByteString.ByteString
     | JsonNumber Rational
     | JsonBoolean Bool
     | JsonNull
+    deriving (Eq, Show, Read, Data, Typeable)
 
-instance ConvertSuccess JsonScalar Text where
-    convertSuccess (JsonString b) = convertSuccess b
-    convertSuccess (JsonNumber r) = convertSuccess r
-    convertSuccess (JsonBoolean b) = convertSuccess b
-    convertSuccess JsonNull = convertSuccess ""
-instance ConvertSuccess Text JsonScalar where
-    convertSuccess = JsonString . convertSuccess
+jsToBS :: JsonScalar -> Data.ByteString.ByteString
+jsToBS (JsonString b) = b
+jsToBS (JsonNumber r) = cs r
+jsToBS (JsonBoolean b) = cs b
+jsToBS JsonNull = Data.ByteString.empty
 
-instance ConvertSuccess JsonScalar String where
-    convertSuccess = cs . (cs :: JsonScalar -> Text)
-instance ConvertSuccess String JsonScalar where
-    convertSuccess = JsonString . cs
+class (Eq a) => IsJsonScalar a where
+    fromJsonScalar :: JsonScalar -> a
+    toJsonScalar :: a -> JsonScalar
+instance IsJsonScalar JsonScalar where
+    fromJsonScalar = id
+    toJsonScalar = id
+instance IsJsonScalar Data.Text.Text where
+    fromJsonScalar = cs . jsToBS
+    toJsonScalar = JsonString . cs
+instance IsJsonScalar Data.Text.Lazy.Text where
+    fromJsonScalar = cs . jsToBS
+    toJsonScalar = JsonString . cs
+instance IsJsonScalar [Char] where
+    fromJsonScalar = cs . jsToBS
+    toJsonScalar = JsonString . cs
+instance IsJsonScalar Data.ByteString.ByteString where
+    fromJsonScalar = jsToBS
+    toJsonScalar = JsonString
+instance IsJsonScalar Data.ByteString.Lazy.ByteString where
+    fromJsonScalar = cs . jsToBS
+    toJsonScalar = JsonString . cs
 
-instance ConvertSuccess JsonScalar BS.ByteString where
-    convertSuccess = cs . (cs :: JsonScalar -> Text)
-instance ConvertSuccess BS.ByteString JsonScalar where
-    convertSuccess = JsonString . cs
+toJsonObject :: ConvertSuccess k Data.ByteString.ByteString
+             => IsJsonScalar v
+             => Object k v
+             -> JsonObject
+toJsonObject = mapKeysValues cs toJsonScalar
 
-$(let types = [''String, ''BS.ByteString, ''Text]
-   in deriveAttempts $
-        [(k, ''JsonScalar) | k <- types] ++
-        [(''JsonScalar, v) | v <- types])
-
-$(deriveSuccessConvs ''BS.ByteString ''JsonScalar
-    [''String, ''BS.ByteString, ''Text]
-    [''String, ''BS.ByteString, ''Text, ''JsonScalar])
+fromJsonObject :: ConvertSuccess Data.ByteString.ByteString k
+               => IsJsonScalar v
+               => JsonObject
+               -> Object k v
+fromJsonObject = mapKeysValues cs fromJsonScalar
 
 -- | Meant to match closely with the 'JSON' data type. Therefore, uses strict
 -- byte strings for keys and the 'JsonScalar' type for scalars.
-type JsonObject = Object BS.ByteString JsonScalar
+type JsonObject = Object Data.ByteString.ByteString JsonScalar
 
-instance ConvertSuccess JSON JsonObject where
-    convertSuccess (J.Object trie) =
-        Mapping . map (second cs) $ Data.Trie.toList trie
-    convertSuccess (J.Array a) = Sequence $ map cs $ a
-    convertSuccess (J.String bs) = Scalar $ JsonString bs
-    convertSuccess (J.Number r) = Scalar $ JsonNumber r
-    convertSuccess (J.Boolean b) = Scalar $ JsonBoolean b
-    convertSuccess J.Null = Scalar JsonNull
-instance ConvertAttempt JsonObject JSON where
-    convertAttempt (Scalar (JsonString bs)) = return $ J.String bs
-    convertAttempt (Scalar (JsonNumber r)) = return $ J.Number r
-    convertAttempt (Scalar (JsonBoolean b)) = return $ J.Boolean b
-    convertAttempt (Scalar JsonNull) = return J.Null
-    convertAttempt (Sequence s) = J.Array <$> mapM ca s
-    convertAttempt (Mapping m) =
-        J.Object . Data.Trie.fromList <$> mapM
-        (runKleisli $ second $ Kleisli ca) m
+jsonToJO :: JSON -> JsonObject
+jsonToJO (J.Object trie) =
+    Mapping . map (second jsonToJO) $ Data.Trie.toList trie
+jsonToJO (J.Array a) = Sequence $ map jsonToJO $ a
+jsonToJO (J.String bs) = Scalar $ JsonString bs
+jsonToJO (J.Number r) = Scalar $ JsonNumber r
+jsonToJO (J.Boolean b) = Scalar $ JsonBoolean b
+jsonToJO J.Null = Scalar JsonNull
+
+joToJSON :: JsonObject -> JSON
+joToJSON (Scalar (JsonString bs)) = J.String bs
+joToJSON (Scalar (JsonNumber r)) = J.Number r
+joToJSON (Scalar (JsonBoolean b)) = J.Boolean b
+joToJSON (Scalar JsonNull) = J.Null
+joToJSON (Sequence s) = J.Array $ map joToJSON s
+joToJSON (Mapping m) =
+    J.Object $ Data.Trie.fromList $ map (second joToJSON) m
 
 -- | Error type for JSON decoding errors.
 newtype JsonDecodeError = JsonDecodeError String
@@ -121,31 +125,30 @@ newtype JsonDecodeError = JsonDecodeError String
 instance Exception JsonDecodeError
 
 -- | Decode a lazy bytestring into a 'JsonObject'.
-decode :: MonadFailure JsonDecodeError m
-       => BL.ByteString
-       -> m JsonObject
-decode = either (failure . JsonDecodeError . fst)
-                (return . toJsonObject)
+decode :: Failure JsonDecodeError m
+       => ConvertSuccess Data.ByteString.ByteString k
+       => IsJsonScalar v
+       => Data.ByteString.ByteString
+       -> m (Object k v)
+decode = either (failure . JsonDecodeError)
+                (return . fromJsonObject . jsonToJO)
        . Decode.decode
 
 -- | Encode a 'JsonObject' into a lazy bytestring.
-encode :: JsonObject
-       -> BL.ByteString
-encode = Encode.encode Encode.Compact
-       . fromSuccess
-       . fromJsonObject
+encode :: (ConvertSuccess k Data.ByteString.ByteString, IsJsonScalar v)
+       => Object k v
+       -> Data.ByteString.ByteString
+encode = Encode.encode Encode.Compact . joToJSON . toJsonObject
 
--- | 'convertSuccess' specialized for 'JsonObject's
-toJsonObject :: ConvertSuccess a JsonObject => a -> JsonObject
-toJsonObject = cs
+encodeFile :: (ConvertSuccess k Data.ByteString.ByteString, IsJsonScalar v)
+           => FilePath
+           -> Object k v
+           -> IO ()
+encodeFile fp = Data.ByteString.writeFile fp . encode
 
--- | 'convertAttempt' specialized for 'JsonObject's
-fromJsonObject :: ConvertAttempt JsonObject a
-               => JsonObject
-               -> Attempt a
-fromJsonObject = ca
-
-instance ConvertSuccess JsonObject JsonDoc where
-    convertSuccess = JsonDoc . encode
-instance ConvertAttempt JsonDoc JsonObject where
-    convertAttempt = decode . unJsonDoc
+decodeFile :: Failure JsonDecodeError m
+           => ConvertSuccess Data.ByteString.ByteString k
+           => IsJsonScalar v
+           => FilePath
+           -> IO (m (Object k v))
+decodeFile fp = decode `fmap` Data.ByteString.readFile fp

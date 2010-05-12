@@ -1,5 +1,5 @@
 name:            data-object-json
-version:         0.0.0.1
+version:         0.3.0
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -13,12 +13,12 @@ homepage:        http://github.com/snoyberg/data-object-json/tree/master
 
 library
     build-depends:   base >= 4 && < 5,
-                     json-b >= 0.0.4 && < 0.1,
+                     JSONb >= 1.0 && < 1.1,
                      bytestring-trie >= 0.1.4 && < 0.2,
                      bytestring >= 0.9.1.4 && < 0.10,
-                     data-object >= 0.2.0 && < 0.3,
-                     attempt >= 0.2.0 && < 0.3,
-                     convertible-text >= 0.2.0.4 && < 0.3,
-                     syb
+                     data-object >= 0.3.0 && < 0.4,
+                     convertible-text >= 0.3.0 && < 0.4,
+                     failure >= 0.1.0 && < 0.2,
+                     text >= 0.7.1 && < 0.8
     exposed-modules: Data.Object.Json
     ghc-options:     -Wall
