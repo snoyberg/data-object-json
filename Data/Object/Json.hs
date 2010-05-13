@@ -27,6 +27,8 @@ module Data.Object.Json
     , encodeFile
     , decode
     , decodeFile
+      -- * Exception type
+    , JsonDecodeError
     ) where
 
 import Data.Object

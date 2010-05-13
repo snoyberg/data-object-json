@@ -2,7 +2,7 @@
 import Test.Framework (defaultMain)
 
 import Data.Object.Json
-import Data.Object.String
+import Data.Object
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.HUnit hiding (Test)
