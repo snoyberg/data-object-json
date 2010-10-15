@@ -6,9 +6,10 @@ import Data.Object
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.HUnit hiding (Test)
-import Test.QuickCheck
+import Test.QuickCheck (Arbitrary (..), oneof)
 import Control.Applicative
 import Numeric
+import qualified Data.ByteString.Char8 as S8
 
 input :: String
 input = "{\"this\":[\"is\",\"a\",\"sample\"],\"numbers\":[5,6,7890,\"456\",1234567890]}"
@@ -27,15 +28,11 @@ output = Mapping
 
 caseInputOutput :: Assertion
 caseInputOutput = do
-    putStrLn input
-    jo <- decode $ cs input
-    let so = mapKeysValues cs cs jo :: StringObject
+    so <- decode $ S8.pack input
     output @=? so
 
 propInputOutput :: StringObject -> Bool
-propInputOutput so =
-    fmap (mapKeysValues cs cs) (decode (encode $ mapKeysValues cs cs so))
-        == Just so
+propInputOutput so = decode (encode so) == Just so
 
 main :: IO ()
 main = defaultMain
