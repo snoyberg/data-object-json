@@ -36,7 +36,7 @@ import qualified Data.Trie
 import Control.Arrow
 import Data.Data
 import Control.Exception
-import GHC.Exts (IsString (fromString))
+import Data.String (IsString (fromString))
 
 import Text.JSONb.Simple as J
 import qualified Text.JSONb.Decode as Decode
