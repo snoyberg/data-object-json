@@ -36,6 +36,7 @@ import qualified Data.Trie
 import Control.Arrow
 import Data.Data
 import Control.Exception
+import GHC.Exts (IsString (fromString))
 
 import Text.JSONb.Simple as J
 import qualified Text.JSONb.Decode as Decode
@@ -58,6 +59,8 @@ data JsonScalar =
     | JsonBoolean Bool
     | JsonNull
     deriving (Eq, Show, Read, Data, Typeable)
+instance IsString JsonScalar where
+    fromString = toJsonScalar
 
 jsToBS :: JsonScalar -> Data.ByteString.ByteString
 jsToBS (JsonString b) = b
