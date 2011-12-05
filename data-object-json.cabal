@@ -1,5 +1,5 @@
 name:            data-object-json
-version:         0.3.1.6
+version:         0.3.1.7
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -17,7 +17,7 @@ library
                      bytestring-trie >= 0.1.4 && < 0.3,
                      bytestring >= 0.9.1.4 && < 0.10,
                      data-object >= 0.3.0 && < 0.4,
-                     convertible-text >= 0.3.0 && < 0.4,
+                     convertible-text >= 0.3.0 && < 0.5,
                      failure >= 0.1.0 && < 0.2,
                      text >= 0.7.1 && < 0.12
     exposed-modules: Data.Object.Json
