@@ -1,10 +1,10 @@
 name:            data-object-json
-version:         0.3.1.7
+version:         0.3.1.8
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
 maintainer:      Michael Snoyman <michael@snoyman.com>
-synopsis:        Serialize JSON data to/from Haskell using the data-object library.
+synopsis:        Serialize JSON data to/from Haskell using the data-object library. (deprecated)
 category:        Text
 stability:       Stable
 cabal-version:   >= 1.2
